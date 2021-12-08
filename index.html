@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Canvas tutorial</title>
+    <!-- This is embedded script-->
+    <script type="text/javascript">
+
+      function Canvas(options, canvas, ctx) {
+          this.canvas = canvas;
+          this.ctx = ctx;
+          this.options = options;
+      }
+
+      Canvas.prototype.formatText = function()
+      {
+        this.ctx.font = "14pt Arial";
+        this.ctx.fillStyle = '#282923';
+        this.ctx.fillRect(0, 0, this.options.maxWidth, this.options.minHeight);
+        
+        let leadSpaceCount = this.options.lines[0].split(" ").length;
+        this.options.marginTop -= this.options.scrollTop;
+        let start = this.options.scrollLines <= 5 ? 0 : this.options.scrollLines - 5;
+        let len = start + this.options.maxLines + 10;
+        len = len >= this.options.lines.length ? this.options.lines.length : len;
+
+        for (let n = start; n < len; n++) {
+            this.defineParserType(this.options.words[n]);
+            let words = this.options.words[n].split(" ");
+            let indent = this.options.lines[n].substr(leadSpaceCount - 1, this.options.lines[n].length);
+            this.ctx.fillText(indent, this.options.marginLeft, this.options.marginTop);
+            this.options.marginLeft += this.ctx.measureText(indent).width;
+            this.options.skipLine = false;
+            this.options.complexWord = false;
+
+            let line = "";
+            for(let j = 0; j < words.length; j += 1) {
+                this.parseWord(words[j], 0, function(context) {
+                    if (!context.options.complexWord) {
+                        /*let testLine = line + words[j] + " ";
+                        let testWidth = context.ctx.measureText(testLine).width;
+
+                        if (testWidth > (context.options.maxWidth - 10)) {
+                            line = words[j] + " ";
+                            context.options.marginTop += context.options.lineHeight;
+                            context.options.marginLeft = 0;
+                        } else {
+                            line = testLine;
+                        }*/
+
+                        context.ctx.fillText(words[j] + " ", context.options.marginLeft, context.options.marginTop);
+                        context.options.marginLeft += context.ctx.measureText(words[j] + " ").width;
+                    }
+                });
+            }
+
+            this.options.marginTop += this.options.lineHeight;
+            this.options.marginLeft = 0;
+        }
+      };
+
+      Canvas.prototype.parseWord = function(word, count, callback) {
+          // color comments
+          if (word === '--' || word.match(/^\/\*/) || word.match(/^#/) || word.match(/^<!--/)) {
+              this.ctx.fillStyle = '#74705D';
+              this.options.skipLine = true;
+          }
+
+          if (!this.options.skipLine) {
+              this.ctx.fillStyle = "#FFF";
+              this.options.breakIterate = false;
+
+              if (!this.options.parser[this.options.parserType]) {
+                  if (callback) callback(this);
+
+                  return;
+              }
+
+              for (let k = 0; k < this.options.parser[this.options.parserType].length; k += 1 ) {
+                  for (let m = 0; m < this.options.parser[this.options.parserType][k].patterns.length; m += 1) {
+                      let pattern = this.options.parser[this.options.parserType][k].patterns[m];
+                      let regex = new RegExp(pattern, 'ig');
+                      let match = regex.exec(word);
+
+                      if (match) {
+                          // Parse complex word
+                          if (match.length > 1) {
+                              this.options.complexWord = true;
+                              this.options.matchedWordsCount = match.length;
+                              this.options.matchedWords = match;
+                              this.parseWord(match[1], 1, null);
+
+                              return;
+                          } else {
+                              this.ctx.fillStyle = this.options.parser[this.options.parserType][k].color;
+                          }
+
+                          this.options.breakIterate = true;
+                          break;
+                      }
+                  }
+
+                  if (this.options.breakIterate) {
+                      break;
+                  }
+              }
+
+              if (this.options.complexWord) {
+                  this.ctx.fillText(word, this.options.marginLeft, this.options.marginTop);
+                  this.options.marginLeft += this.ctx.measureText(word).width;
+                  count += 1;
+
+                  if (count === this.options.matchedWordsCount) {
+                      this.ctx.strokeText(" ", this.options.marginLeft, this.options.marginTop);
+                      this.options.marginLeft += this.ctx.measureText(" ").width;
+                      this.options.complexWord = false;
+
+                      return;
+                  }
+
+                  this.parseWord(this.options.matchedWords[count], count, null);
+              }
+          }
+
+          if (callback && !this.options.complexWord) callback(this);
+      };
+
+      Canvas.prototype.defineParserType = function(line) {
+          for (let parser in this.options.keyPatterns) {
+              if (!this.options.keyPatterns.hasOwnProperty(parser)) {
+                  continue;
+              }
+
+              for (let n = 0; n < this.options.keyPatterns[parser].length; n += 1) {
+                  let regex = new RegExp(this.options.keyPatterns[parser][n], 'ig');
+                  let match = regex.exec(line);
+
+                  if (match) {
+                      this.options.parserType = parser;
+                      break;
+                  }
+              }
+          }
+      };
+
+      Canvas.prototype.buildVerticalScroll = function() {
+          this.ctx.fillStyle = "#DEDEDE";
+          this.ctx.fillRect(this.options.maxWidth - 5, 0, 5,this.options.minHeight);
+
+          this.ctx.fillStyle = "#f6b73c";
+          var incr = this.options.lines.length > 500 ? 8 : 1;
+          var rate = Math.round(this.options.maxHeight / (this.options.maxLines * this.options.lineHeight));
+          var scrollHeight = Math.round((this.options.maxLines * this.options.lineHeight) / rate);
+          this.roundedRect(this.options.maxWidth - 5, Math.round((this.options.scrollLines * this.options.lineHeight) / rate), 5, scrollHeight * incr, 5);
+      };
+
+      Canvas.prototype.roundedRect = function(x,y,width,height,radius){
+        this.ctx.beginPath();
+        this.ctx.moveTo(x,y+radius);
+        this.ctx.lineTo(x,y+height-radius);
+        this.ctx.quadraticCurveTo(x,y+height,x+radius,y+height);
+        this.ctx.lineTo(x+width-radius,y+height);
+        this.ctx.quadraticCurveTo(x+width,y+height,x+width,y+height-radius);
+        this.ctx.lineTo(x+width,y+radius);
+        this.ctx.quadraticCurveTo(x+width,y,x+width-radius,y);
+        this.ctx.lineTo(x+radius,y);
+        this.ctx.quadraticCurveTo(x,y,x,y+radius);
+        this.ctx.fill();
+      };
+
+      Canvas.prototype.bindWheelEvent = function() {
+          var ctx = this;
+          if (this.canvas.addEventListener) {
+            if ('onwheel' in document) {
+              // IE9+, FF17+, Ch31+
+              this.canvas.addEventListener("wheel", function() {
+                ctx.onWheel(event);
+              });
+            } else if ('onmousewheel' in document) {
+              this.canvas.addEventListener("mousewheel", ctx.onWheel);
+            } else {
+              // Firefox < 17
+              this.canvas.addEventListener("MozMousePixelScroll", ctx.onWheel);
+            }
+          } else { // IE8-
+            this.canvas.attachEvent("onmousewheel", ctx.onWheel);
+          }
+      };
+
+      Canvas.prototype.onWheel = function(e) {
+        e = e || window.event;
+        var delta = e.deltaY || e.detail || e.wheelDelta;
+        e.preventDefault ? e.preventDefault() : (e.returnValue = false);
+
+        if (delta > 0) {
+            if (this.options.scrollLines + this.options.maxLines <= this.options.lines.length) {
+                if (this.options.scrollLines <= 5) {
+                  this.options.scrollTop += this.options.lineHeight;
+              }
+              this.options.scrollLines += 1;
+            }
+        }
+
+        if (delta < 0) {
+            if (this.options.scrollTop <= 0) {
+                this.options.scrollTop = 0;
+                this.options.scrollLines = 0;
+            } else {
+                if (this.options.scrollLines <= 5) {
+                  this.options.scrollTop -= this.options.lineHeight;
+                }
+                this.options.scrollLines -= 1;
+            }
+        }
+
+        this.options.marginTop = 20;
+        this.formatText();
+        this.buildVerticalScroll();
+      };
+
+      function draw(w, h, code, file) {
+        var canvas = document.getElementById('viewport');
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+        let lastIndex = file.name.lastIndexOf('.');
+        let fileExt = file.name.substr(lastIndex + 1, file.name.length);
+
+        if (canvas.getContext){
+          var context = canvas.getContext('2d');
+          var options = {
+              maxWidth: 1000,
+              minHeight: 600,
+              maxHeight: 0,
+              lineHeight: 25,
+              marginLeft: 0,
+              marginTop: 20,
+              scrollTop: 0,
+              scrollLines: 0,
+              code: code,
+              lines: [],
+              maxLines: 0,
+              words: [],
+              skipLine: false,
+              breakIterate: false,
+              complexWord: false,
+              matchedWordsCount: 0,
+              matchedWords: [],
+              parser: {
+                sql: [
+                  {
+                      patterns: ['^drop$', '^table$', '^create$', '^not$', '^null,?$', '^default$', '^primary$', '^key$', '^constraint$', '^foreign$', '^references$', '^insert$', '^into$', '^values$', '^=$', '^on$', '^delete$', '^update$', '^cascade$'],
+                      color: '#F92472'
+                  },
+                  {
+                      patterns: ['if', 'exists', '^\\($', '^\\)$', '^auto_increment,$', '(auto_increment)(=)([0-9]+)', '^auto_increment$', '(collate)(=)(utf8.*?)','^collate$', '^utf8.*?', '(charset)(=)(utf8.*?)', '^charset$', '^unique$', '^lock$', '^tables;?$', '^write;?$', '^unlock$', '(engine)(=)([^\\\\s]+)', '^engine$', '^innodb$'],
+                      color: '#FFFFFF'
+                  },
+                  {
+                      patterns: ['(int)(\\()([0-9]*)(\\))', '(varchar)(\\()([0-9]*)(\\))', '^text$', '^longtext$', '^double$', '^float$', 'tiny', '^date$', '^time$', '^datetime$', '^int$', '^varchar$'],
+                      color: '#67D8EF'
+                  },
+                  {
+                      patterns: ['(\\()(`[^`]+`)(\\))', '^`[^`]+`;?$'],
+                      color: '#E7DB74'
+                  },
+                  {
+                      patterns: ['^[0-9]+$'],
+                      color: '#AC80FF'
+                  }
+                ]
+              },
+              fileType: file.type ? file.type : fileExt,
+              parserType: null,
+              keyPatterns: {
+                  html: ['<\\!doctype', '<[^>]+>'],
+                  js: ['\\(?function', '^let$', '^var$', '^import$', '^for$'],
+                  css: ['\\.(.*?)\\\\s?\\{', '(.*?)\\\\s?\\{'],
+                  sql: ['drop', 'table', 'create', 'select', 'insert into', 'update', 'lock tables', 'unlock tables', 'collate']
+              },
+          };
+
+          options.maxLines = Math.round(options.minHeight / options.lineHeight);
+          let lines = options.code.match(/(\n\s*)/g);
+          options.lines = lines;
+          options.maxHeight = lines.length * options.lineHeight;
+
+          let text = options.code.replace(/(\n\s*)/g, "!*!");
+          options.words = text.split("!*!");
+
+          let ctx = new Canvas(options, canvas, context);
+          context.fillStyle = '#282923';
+          context.fillRect(0, 0, options.maxWidth, options.minHeight);
+
+          ctx.formatText();
+          ctx.buildVerticalScroll();
+          ctx.bindWheelEvent();
+        }
+      }
+
+      function readFile(input) {
+        let file = input.files[0];
+        let reader = new FileReader();
+        reader.readAsText(file);
+
+        reader.onload = function() {
+          draw(1000, 600, reader.result, file);
+        };
+
+        reader.onerror = function() {
+          console.log(reader.error);
+        };
+
+      }
+    </script>
+    <style type="text/css">
+      canvas { border: 1px solid black; }
+    </style>
+  </head>
+  <body>
+    <canvas id="viewport" width="1000" height="600"></canvas>
+    <div>
+      <input type="file" onchange="readFile(this)"/>
+    </div>
+  </body>
+</html>
